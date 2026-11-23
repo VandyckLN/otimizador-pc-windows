@@ -162,6 +162,59 @@ Describe 'Coletar-Alertas' {
     }
 }
 
+Describe 'Coletar-Alertas - estabilidade e deduplicacao' {
+    It 'firewall: Problema e Solucao vem do mapa de textos' {
+        $itens = @(
+            [pscustomobject]@{ Codigo = 'firewall'; Secao = 'Seguranca'; Nome = 'Firewall (Domain)'; Valor = 'Desligado'; Status = 'erro' },
+            [pscustomobject]@{ Codigo = 'firewall'; Secao = 'Seguranca'; Nome = 'Firewall (Public)'; Valor = 'Desligado'; Status = 'erro' }
+        )
+        $r = @(Coletar-Alertas -Achados @() -Itens $itens)
+        $r[0].Problema | Should -BeExactly 'Firewall do Windows desligado'
+        $r[0].Solucao | Should -BeExactly 'Reativar o firewall em Segurança do Windows > Firewall e proteção de rede (todos os perfis)'
+    }
+    It 'antivirus: Problema igual independente da ordem dos itens' {
+        $a = [pscustomobject]@{ Codigo = 'antivirus'; Secao = 'S'; Nome = 'AV1'; Valor = 'x'; Status = 'aviso' }
+        $b = [pscustomobject]@{ Codigo = 'antivirus'; Secao = 'S'; Nome = 'AV2'; Valor = 'y'; Status = 'erro' }
+        $r1 = @(Coletar-Alertas -Achados @() -Itens @($a, $b))
+        $r2 = @(Coletar-Alertas -Achados @() -Itens @($b, $a))
+        $r1[0].Problema | Should -BeExactly 'Antivírus desativado, desatualizado ou ausente'
+        $r2[0].Problema | Should -BeExactly $r1[0].Problema
+        $r1[0].Solucao | Should -BeExactly 'Verificar o antivírus: ativar a proteção em tempo real e atualizar as definições. Se não houver antivírus, ativar o Microsoft Defender'
+    }
+    It 'sem entrada no mapa: Problema = Nome do primeiro item e Solucao vazia' {
+        $itens = @(
+            [pscustomobject]@{ Codigo = 'zzz'; Secao = 'S'; Nome = 'Primeiro'; Valor = '1'; Status = 'aviso' },
+            [pscustomobject]@{ Codigo = 'zzz'; Secao = 'S'; Nome = 'Segundo'; Valor = '2'; Status = 'erro' }
+        )
+        $r = @(Coletar-Alertas -Achados @() -Itens $itens)
+        $r[0].Problema | Should -Be 'Primeiro'
+        $r[0].Solucao | Should -Be ''
+    }
+    It 'dois achados com o mesmo Codigo -> 1 alerta, pior gravidade, evidencia junta, ultimo evento mais recente' {
+        $achados = @(
+            [pscustomobject]@{ Codigo = 'bsod'; Categoria = 'T'; Problema = 'P1'; Evidencia = 'e1'; Solucao = 's1'; Gravidade = 'aviso'; UltimoEvento = [datetime]'2026-11-20T10:00:00' },
+            [pscustomobject]@{ Codigo = 'bsod'; Categoria = 'T2'; Problema = 'P2'; Evidencia = 'e2'; Solucao = 's2'; Gravidade = 'erro'; UltimoEvento = [datetime]'2026-11-21T10:00:00' }
+        )
+        $r = @(Coletar-Alertas -Achados $achados -Itens @())
+        $r.Count | Should -Be 1
+        $r[0].Gravidade | Should -Be 'erro'
+        $r[0].Evidencia | Should -Be 'e1; e2'
+        $r[0].Problema | Should -Be 'P2'
+        $r[0].Solucao | Should -Be 's2'
+        $r[0].UltimoEvento | Should -Be ([datetime]'2026-11-21T10:00:00')
+    }
+    It 'achado e item com o mesmo Codigo -> 1 alerta, achado tem precedencia nos textos' {
+        $achados = @([pscustomobject]@{ Codigo = 'firewall'; Categoria = 'Cat'; Problema = 'Do achado'; Evidencia = 'ev'; Solucao = 'sol'; Gravidade = 'aviso' })
+        $itens = @([pscustomobject]@{ Codigo = 'firewall'; Secao = 'S'; Nome = 'Firewall (Public)'; Valor = 'Desligado'; Status = 'erro' })
+        $r = @(Coletar-Alertas -Achados $achados -Itens $itens)
+        $r.Count | Should -Be 1
+        $r[0].Problema | Should -Be 'Do achado'
+        $r[0].Gravidade | Should -Be 'erro'
+        $r[0].Evidencia | Should -Match 'ev'
+        $r[0].Evidencia | Should -Match 'Public'
+    }
+}
+
 Describe 'Novo-Payload' {
     BeforeAll {
         $Script:Comp = @{ nome = 'PC1'; usuario = 'PC1\maria'; fabricante = 'Dell'; modelo = 'X'; numeroSerie = 'S1'; windows = 'Win 11'; ultimoBoot = [datetime]'2026-11-22T08:01:00' }

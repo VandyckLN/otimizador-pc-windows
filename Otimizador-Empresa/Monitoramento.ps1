@@ -13,6 +13,18 @@ $Script:MapaDestino = @{
     'disco-espaco' = @{ erro = 'tarefa'; aviso = 'tarefa' }
 }
 
+# Texto estavel (titulo da tarefa e solucao) dos alertas gerados a partir de itens
+$Script:TextoAlertaItem = @{
+    'antivirus' = @{
+        Problema = 'Antivírus desativado, desatualizado ou ausente'
+        Solucao  = 'Verificar o antivírus: ativar a proteção em tempo real e atualizar as definições. Se não houver antivírus, ativar o Microsoft Defender'
+    }
+    'firewall'  = @{
+        Problema = 'Firewall do Windows desligado'
+        Solucao  = 'Reativar o firewall em Segurança do Windows > Firewall e proteção de rede (todos os perfis)'
+    }
+}
+
 # Dias sem evento novo para considerar um alerta baseado em evento como resolvido
 $Script:DiasParaResolver = 7
 
@@ -171,52 +183,69 @@ function Formatar-DataIso {
 function Coletar-Alertas {
     param([object[]]$Achados, [object[]]$Itens)
 
-    $saida = New-Object System.Collections.ArrayList
-
+    # Agrupa achados e itens por Codigo (um alerta por Codigo)
+    $grupos = [ordered]@{}
     foreach ($a in @($Achados)) {
         if ($null -eq $a -or [string]::IsNullOrWhiteSpace([string]$a.Codigo)) { continue }
-        $grav = [string]$a.Gravidade
-        [void]$saida.Add([pscustomobject]@{
-            Codigo       = [string]$a.Codigo
-            Categoria    = [string]$a.Categoria
-            Problema     = [string]$a.Problema
-            Evidencia    = [string]$a.Evidencia
-            Solucao      = [string]$a.Solucao
-            Gravidade    = $grav
-            Destino      = (Get-Destino ([string]$a.Codigo) $grav)
-            UltimoEvento = $a.UltimoEvento
-        })
+        $cod = [string]$a.Codigo
+        if (-not $grupos.Contains($cod)) { $grupos[$cod] = @{ Achados = (New-Object System.Collections.ArrayList); Itens = (New-Object System.Collections.ArrayList) } }
+        [void]$grupos[$cod].Achados.Add($a)
     }
-
-    # Itens com problema: um alerta por Codigo
-    $grupos = [ordered]@{}
     foreach ($i in @($Itens)) {
         if ($null -eq $i -or [string]::IsNullOrWhiteSpace([string]$i.Codigo)) { continue }
         if ([string]$i.Status -eq 'ok') { continue }
         $cod = [string]$i.Codigo
-        if (-not $grupos.Contains($cod)) { $grupos[$cod] = New-Object System.Collections.ArrayList }
-        [void]$grupos[$cod].Add($i)
-    }
-    foreach ($cod in $grupos.Keys) {
-        $lista = @($grupos[$cod])
-        $pior = $lista[0]
-        foreach ($i in $lista) {
-            if ((Get-PesoGravidade ([string]$i.Status)) -gt (Get-PesoGravidade ([string]$pior.Status))) { $pior = $i }
-        }
-        $evid = ($lista | ForEach-Object { "{0}: {1}" -f $_.Nome, $_.Valor }) -join '; '
-        $grav = [string]$pior.Status
-        [void]$saida.Add([pscustomobject]@{
-            Codigo       = $cod
-            Categoria    = [string]$pior.Secao
-            Problema     = [string]$pior.Nome
-            Evidencia    = $evid
-            Solucao      = [string]$pior.Solucao
-            Gravidade    = $grav
-            Destino      = (Get-Destino $cod $grav)
-            UltimoEvento = $null
-        })
+        if (-not $grupos.Contains($cod)) { $grupos[$cod] = @{ Achados = (New-Object System.Collections.ArrayList); Itens = (New-Object System.Collections.ArrayList) } }
+        [void]$grupos[$cod].Itens.Add($i)
     }
 
+    $saida = New-Object System.Collections.ArrayList
+    foreach ($cod in $grupos.Keys) {
+        $g = $grupos[$cod]
+        $achGrp = @($g.Achados)
+        $itGrp = @($g.Itens)
+
+        # Pior gravidade de todo o grupo
+        $grav = ''
+        $pesoMax = -1
+        foreach ($x in $achGrp) { $pv = Get-PesoGravidade ([string]$x.Gravidade); if ($pv -gt $pesoMax) { $pesoMax = $pv; $grav = [string]$x.Gravidade } }
+        foreach ($x in $itGrp) { $pv = Get-PesoGravidade ([string]$x.Status); if ($pv -gt $pesoMax) { $pesoMax = $pv; $grav = [string]$x.Status } }
+
+        # Evidencia: achados primeiro, depois "Nome: Valor" dos itens
+        $partes = @()
+        foreach ($x in $achGrp) { if (-not [string]::IsNullOrWhiteSpace([string]$x.Evidencia)) { $partes += [string]$x.Evidencia } }
+        foreach ($x in $itGrp) { $partes += ("{0}: {1}" -f $x.Nome, $x.Valor) }
+
+        # Ultimo evento: o mais recente nao nulo
+        $ultimo = $null
+        foreach ($x in $achGrp) { if ($null -ne $x.UltimoEvento -and ($null -eq $ultimo -or $x.UltimoEvento -gt $ultimo)) { $ultimo = $x.UltimoEvento } }
+
+        if ($achGrp.Count -gt 0) {
+            $pior = $achGrp[0]
+            foreach ($x in $achGrp) { if ((Get-PesoGravidade ([string]$x.Gravidade)) -gt (Get-PesoGravidade ([string]$pior.Gravidade))) { $pior = $x } }
+            $categoria = [string]$pior.Categoria; $problema = [string]$pior.Problema; $solucao = [string]$pior.Solucao
+        }
+        else {
+            $base = ($cod -split ':', 2)[0]
+            $categoria = [string]$itGrp[0].Secao
+            if ($Script:TextoAlertaItem.ContainsKey($base)) {
+                $problema = [string]$Script:TextoAlertaItem[$base].Problema
+                $solucao = [string]$Script:TextoAlertaItem[$base].Solucao
+            }
+            else { $problema = [string]$itGrp[0].Nome; $solucao = '' }
+        }
+
+        [void]$saida.Add([pscustomobject]@{
+            Codigo       = $cod
+            Categoria    = $categoria
+            Problema     = $problema
+            Evidencia    = ($partes -join '; ')
+            Solucao      = $solucao
+            Gravidade    = $grav
+            Destino      = (Get-Destino $cod $grav)
+            UltimoEvento = $ultimo
+        })
+    }
     return $saida.ToArray()
 }
 
