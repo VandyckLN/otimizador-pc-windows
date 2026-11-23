@@ -14,24 +14,24 @@
   },
   "alertas": [
     {
-      "codigo": "disco-espaco",
-      "categoria": "Desempenho",
-      "problema": "Pouco espaço livre no disco do sistema",
-      "evidencia": "Disco C: com 6% livre (14 GB de 238 GB).",
-      "solucao": "Executar a limpeza do Otimizador e remover arquivos grandes que não sejam mais necessários.",
+      "codigo": "antivirus",
+      "categoria": "Segurança",
+      "problema": "Antivírus desativado, desatualizado ou ausente",
+      "evidencia": "Antivírus: Windows Defender: DESATIVADO, DESATUALIZADO",
+      "solucao": "Verificar o antivírus: ativar a proteção em tempo real e atualizar as definições. Se não houver antivírus, ativar o Microsoft Defender",
       "gravidade": "erro",
       "destino": "tarefa",
       "situacao": "novo",
       "ultimoEvento": null
     },
     {
-      "codigo": "reinicio-pendente",
-      "categoria": "Atualizações",
-      "problema": "Reinicialização pendente há vários dias",
-      "evidencia": "O Windows aguarda reiniciar para concluir atualizações; sem reiniciar há 12 dia(s).",
-      "solucao": "Pedir ao usuário para reiniciar o computador.",
+      "codigo": "programas-travando",
+      "categoria": "Travamentos",
+      "problema": "Programas travando ou fechando sozinhos",
+      "evidencia": "EXCEL.EXE (5x); ms-teams.exe (3x)",
+      "solucao": "Atualizar ou reparar o programa (Configurações > Aplicativos > Modificar/Reparar). No Office, usar \"Reparo Rápido\"",
       "gravidade": "aviso",
-      "destino": "card",
+      "destino": "nenhum",
       "situacao": "persiste",
       "ultimoEvento": null
     },
@@ -39,28 +39,49 @@
       "codigo": "bsod",
       "categoria": "Travamentos",
       "problema": "Telas azuis (o Windows travou e reiniciou)",
-      "evidencia": "2 nos últimos 30 dias. Último código: 0x0000009F (DRIVER_POWER_STATE_FAILURE).",
-      "solucao": "Atualizar drivers (vídeo, rede e chipset) e a BIOS; se continuar, testar a memória RAM.",
+      "evidencia": "2 nos últimos 30 dias. 0x9F (2x) = DRIVER_POWER_STATE_FAILURE: driver falhou ao suspender/retomar",
+      "solucao": "Atualizar drivers e Windows (opção 8). Se continuar, testar a memória RAM com o Diagnóstico de Memória",
       "gravidade": "erro",
       "destino": "tarefa",
       "situacao": "nova-ocorrencia",
       "ultimoEvento": "2026-11-21T14:10:00-03:00"
     },
     {
-      "codigo": "antivirus-desatualizado",
-      "categoria": "Segurança",
-      "problema": "Antivírus desatualizado",
-      "evidencia": "Última atualização das assinaturas há 9 dia(s).",
-      "solucao": "Atualizar as definições do antivírus.",
+      "codigo": "disco-espaco",
+      "categoria": "Lentidão",
+      "problema": "Pouco espaço livre no disco C:",
+      "evidencia": "",
+      "solucao": "",
       "gravidade": "aviso",
-      "destino": "card",
+      "destino": "tarefa",
       "situacao": "resolvido",
       "ultimoEvento": null
     }
   ],
   "itens": [
-    { "secao": "Hardware", "nome": "Memória RAM", "valor": "9,33 GB de 15,89 GB em uso (59%)", "status": "ok" },
-    { "secao": "Hardware", "nome": "Espaço livre (C:)", "valor": "6% livre (14 GB de 238 GB)", "status": "erro" },
-    { "secao": "Segurança", "nome": "Firewall", "valor": "Ativo em todos os perfis", "status": "ok" }
+    {
+      "secao": "Identificação",
+      "nome": "Usuário logado",
+      "valor": "PC-FINANCEIRO-03\\maria",
+      "status": "ok"
+    },
+    {
+      "secao": "Hardware",
+      "nome": "Unidade C:",
+      "valor": "38,21 GB livres de 237,85 GB (16%)",
+      "status": "ok"
+    },
+    {
+      "secao": "Segurança",
+      "nome": "Antivírus: Windows Defender",
+      "valor": "DESATIVADO, DESATUALIZADO",
+      "status": "erro"
+    },
+    {
+      "secao": "Segurança",
+      "nome": "Firewall (Domain)",
+      "valor": "ativo",
+      "status": "ok"
+    }
   ]
 }
