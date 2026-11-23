@@ -70,9 +70,17 @@ Uma vez por dia, cada PC pode enviar um aviso para um fluxo do Power Automate, q
 
 **Como configurar:**
 
-1. Monte o fluxo seguindo o [guia do fluxo](docs/monitoramento/fluxo-power-automate.md).
-2. Na pasta `Otimizador-Empresa`, copie `config.exemplo.json` para `config.json` e preencha `urlFluxo` e `token`. O `config.json` fica fora do git.
-3. Teste com `Otimizador-Empresa\Testar-Envio.ps1` e confira se o card chegou no canal.
+1. Copie a pasta `Otimizador-Empresa` para `C:\TI\Otimizador-Empresa` e, num Prompt de Comando **como administrador**, restrinja a pasta `C:\TI` a Administradores e SYSTEM:
+
+   ```bat
+   icacls C:\TI /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F
+   ```
+
+   A tarefa agendada roda esses scripts como SYSTEM: se um usuário comum puder alterá-los, ele executa código como SYSTEM, lê o token do `config.json` ou planta um `estado\` falso. (No PowerShell, coloque cada `*S-...F` entre aspas simples.)
+2. Monte o fluxo seguindo o [guia do fluxo](docs/monitoramento/fluxo-power-automate.md).
+3. Na pasta `Otimizador-Empresa`, copie `config.exemplo.json` para `config.json` e preencha `urlFluxo` e `token`. O `config.json` fica fora do git. Na primeira execução, o script restringe o `config.json` a Administradores e SYSTEM; depois disso, para trocar o token, edite o arquivo num editor aberto **como administrador**.
+4. Teste com `Otimizador-Empresa\Testar-Envio.ps1` (como administrador) e confira se o card chegou no canal. **Atenção:** cada execução do teste cria uma tarefa real no Planner; apague-a depois.
+5. Faça um **piloto com 3 a 5 PCs** antes de agendar nos 50: no primeiro dia, cada PC envia todos os problemas que já existem como `novo`, o que gera muitos cards e tarefas de uma vez.
 
 Sem `config.json`, o script funciona como antes e só registra um aviso no log.
 
@@ -81,6 +89,14 @@ Agendar o monitoramento diário às 10h (rodar como administrador), além da tar
 ```bat
 schtasks /Create /TN "Monitoramento Otimizador" /SC DAILY /ST 10:00 /RU SYSTEM /RL HIGHEST /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\TI\Otimizador-Empresa\OtimizadorEmpresa.ps1 -Monitorar"
 ```
+
+Com `-Monitorar`, o script espera um tempo aleatório de 0 a 15 minutos antes de rodar (para os PCs não chamarem o fluxo todos ao mesmo tempo) e registra a espera no log. Para rodar na hora, num teste manual ou diagnóstico, acrescente `-SemAtraso`.
+
+**Limitações conhecidas:**
+
+- Relatórios e logs da execução diária se acumulam em `relatorios\` e `logs\`. Ainda não há limpeza automática.
+- Como a tarefa roda como SYSTEM, as verificações de privacidade de câmera e microfone (que leem `HKCU`) leem as configurações do SYSTEM, e não as do usuário logado.
+- Problemas sem evento (espaço em disco, antivírus, RAM...) só são dados como resolvidos depois de 7 dias seguidos sem aparecer.
 
 ---
 
