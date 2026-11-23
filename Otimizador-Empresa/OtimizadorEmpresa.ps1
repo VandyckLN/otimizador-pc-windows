@@ -9,17 +9,22 @@
       Interativo  : INICIAR_EMPRESA.bat
       Automático  : MANUTENCAO_AUTOMATICA.bat  (limpeza segura + relatório, sem perguntas)
       Parâmetros  : -Automatico  -PastaRelatorio "\\servidor\ti\relatorios"
+      Monitoramento: -Monitorar  (diagnóstico sem limpeza + envio dos alertas ao fluxo do Teams)
 #>
 param(
     [switch]$Automatico,
-    [string]$PastaRelatorio
+    [string]$PastaRelatorio,
+    [switch]$Monitorar
 )
+if ($Monitorar) { $Automatico = $true }
+$Script:VersaoScript = '1.2'
 
 # ---------- Autoelevação para Administrador ----------
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $argumentos = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     if ($Automatico) { $argumentos += ' -Automatico' }
+    if ($Monitorar) { $argumentos += ' -Monitorar' }
     if ($PastaRelatorio) { $argumentos += " -PastaRelatorio `"$PastaRelatorio`"" }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argumentos
     exit
@@ -27,6 +32,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $ErrorActionPreference = 'SilentlyContinue'
 $Base       = Split-Path -Parent $PSCommandPath
+. (Join-Path $Base 'Monitoramento.ps1')
 $BackupDir  = Join-Path $Base 'backup'
 $LogDir     = Join-Path $Base 'logs'
 if (-not $PastaRelatorio) { $PastaRelatorio = Join-Path $Base 'relatorios' }
@@ -145,8 +151,8 @@ function Get-PerfisUsuarios {
 # 1. DIAGNÓSTICO + RELATÓRIO HTML
 # =====================================================================
 $Script:Relatorio = New-Object System.Collections.ArrayList
-function Item($secao, $nome, $valor, $status = 'ok') {
-    [void]$Script:Relatorio.Add([pscustomobject]@{ Secao = $secao; Nome = $nome; Valor = "$valor"; Status = $status })
+function Item($secao, $nome, $valor, $status = 'ok', $Codigo = $null) {
+    [void]$Script:Relatorio.Add([pscustomobject]@{ Secao = $secao; Nome = $nome; Valor = "$valor"; Status = $status; Codigo = $Codigo })
     $cor = switch ($status) { 'erro' { 'Red' } 'aviso' { 'Yellow' } default { 'Gray' } }
     Log ("  {0,-34} {1}" -f $nome, $valor) $cor
 }
@@ -220,11 +226,11 @@ function Diagnostico {
             $ativo = $hex.Substring(2, 2) -in '10', '11'
             $atual = $hex.Substring(4, 2) -eq '00'
             $st = if ($ativo -and $atual) { 'ok' } elseif ($ativo) { 'aviso' } else { 'erro' }
-            Item $s ("Antivírus: {0}" -f $av.displayName) ("{0}, {1}" -f $(if ($ativo) { 'ativo' } else { 'DESATIVADO' }), $(if ($atual) { 'atualizado' } else { 'DESATUALIZADO' })) $st
+            Item $s ("Antivírus: {0}" -f $av.displayName) ("{0}, {1}" -f $(if ($ativo) { 'ativo' } else { 'DESATIVADO' }), $(if ($atual) { 'atualizado' } else { 'DESATUALIZADO' })) $st -Codigo 'antivirus'
         }
-    } else { Item $s 'Antivírus' 'nenhum detectado' 'erro' }
+    } else { Item $s 'Antivírus' 'nenhum detectado' 'erro' -Codigo 'antivirus' }
     foreach ($fw in Get-NetFirewallProfile) {
-        Item $s ("Firewall ({0})" -f $fw.Name) $(if ($fw.Enabled) { 'ativo' } else { 'DESATIVADO' }) $(if ($fw.Enabled) { 'ok' } else { 'erro' })
+        Item $s ("Firewall ({0})" -f $fw.Name) $(if ($fw.Enabled) { 'ativo' } else { 'DESATIVADO' }) $(if ($fw.Enabled) { 'ok' } else { 'erro' }) -Codigo 'firewall'
     }
     $bl = Get-BitLockerVolume -MountPoint $env:SystemDrive
     if ($bl) {
@@ -334,9 +340,10 @@ td{padding:8px 12px;border-bottom:1px solid #e4e7eb;vertical-align:top;font-size
 $Script:Achados   = New-Object System.Collections.ArrayList
 $Script:Correcoes = New-Object System.Collections.ArrayList
 
-function Achado($categoria, $problema, $evidencia, $solucao, $gravidade = 'aviso', $correcao = $null, $descCorrecao = $null) {
+function Achado($categoria, $problema, $evidencia, $solucao, $gravidade = 'aviso', $correcao = $null, $descCorrecao = $null, $Codigo = $null, $UltimoEvento = $null) {
     [void]$Script:Achados.Add([pscustomobject]@{
-        Categoria = $categoria; Problema = $problema; Evidencia = $evidencia; Solucao = $solucao; Gravidade = $gravidade })
+        Categoria = $categoria; Problema = $problema; Evidencia = $evidencia; Solucao = $solucao; Gravidade = $gravidade
+        Codigo = $Codigo; UltimoEvento = $UltimoEvento })
     if ($correcao -and -not ($Script:Correcoes | Where-Object Descricao -eq $descCorrecao)) {
         [void]$Script:Correcoes.Add([pscustomobject]@{ Descricao = $descCorrecao; Acao = $correcao })
     }
@@ -408,12 +415,12 @@ function Analisar-Problemas {
         $sol = 'Reiniciar o computador. Oriente o usuário a usar "Reiniciar" pelo menos 1x por semana'
         if ($fastStartup) { $sol += ' (a Inicialização Rápida está ativa: "Desligar" NÃO limpa a memória, só o "Reiniciar")' }
         Achado 'Lentidão' 'Computador sem reiniciar há muito tempo' ("Ligado há {0} dias" -f [int]$uptime.TotalDays) $sol `
-            $(if ($uptime.TotalDays -ge 14) { 'erro' } else { 'aviso' }) $reiniciar 'Reiniciar o computador em 2 minutos'
+            $(if ($uptime.TotalDays -ge 14) { 'erro' } else { 'aviso' }) $reiniciar 'Reiniciar o computador em 2 minutos' -Codigo 'sem-reiniciar'
     }
     if ((Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
         (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')) {
         Achado 'Lentidão' 'Atualizações aguardando reinicialização' 'O Windows instalou atualizações e precisa reiniciar para concluir' `
-            'Reiniciar o computador; atualizações pendentes deixam o sistema mais lento e instável' 'aviso' $reiniciar 'Reiniciar o computador em 2 minutos'
+            'Reiniciar o computador; atualizações pendentes deixam o sistema mais lento e instável' 'aviso' $reiniciar 'Reiniciar o computador em 2 minutos' -Codigo 'reinicio-pendente'
     }
 
     # ---------- LENTIDÃO: memória RAM ----------
@@ -421,51 +428,51 @@ function Analisar-Problemas {
     $ramUso = 100 - $os.FreePhysicalMemory / $os.TotalVisibleMemorySize * 100
     if ($ramUso -ge 85 -or $pages -gt 1500 -or $commit -gt 90) {
         Achado 'Lentidão' 'Memória RAM esgotada' ("{0:N0}% da RAM em uso, {1:N0} páginas/s gravadas em disco. Maiores consumidores: {2}" -f $ramUso, $pages, $txtMem) `
-            'Fechar programas e abas que não estão em uso. Se acontecer todo dia, a máquina precisa de mais memória RAM' $(if ($ramUso -ge 92) { 'erro' } else { 'aviso' })
+            'Fechar programas e abas que não estão em uso. Se acontecer todo dia, a máquina precisa de mais memória RAM' $(if ($ramUso -ge 92) { 'erro' } else { 'aviso' }) -Codigo 'ram-esgotada'
     }
     if ($ramTotal -lt 7.5GB) {
         Achado 'Lentidão' 'Pouca memória RAM instalada' ("{0} instalados" -f (FormatTam $ramTotal)) `
-            'Para uso corporativo (navegador, Office, Teams) o mínimo é 8 GB; o ideal é 16 GB' 'aviso'
+            'Para uso corporativo (navegador, Office, Teams) o mínimo é 8 GB; o ideal é 16 GB' 'aviso' -Codigo 'ram-pouca'
     }
 
     # ---------- LENTIDÃO: processador ----------
     if ($cpuMedia -ge 50) {
         Achado 'Lentidão' 'Processador sobrecarregado' ("Uso médio de {0:N0}% durante a medição. Maiores consumidores: {1}" -f $cpuMedia, $txtCpu) `
-            'Verificar os programas listados. Se for antivírus ou Windows Update, é temporário: aguarde terminar' $(if ($cpuMedia -ge 80) { 'erro' } else { 'aviso' })
+            'Verificar os programas listados. Se for antivírus ou Windows Update, é temporário: aguarde terminar' $(if ($cpuMedia -ge 80) { 'erro' } else { 'aviso' }) -Codigo 'cpu-sobrecarregado'
     }
     $limitacao = Eventos @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-Processor-Power'; Id = 37 } 7
     if ($limitacao.Count -gt 0 -or ($cpuMedia -ge 50 -and $perfMedia -gt 0 -and $perfMedia -lt 60)) {
         Achado 'Lentidão' 'Processador reduzindo a velocidade (superaquecimento ou energia)' `
             ("{0} avisos de velocidade limitada nos últimos 7 dias; desempenho atual {1:N0}% do nominal" -f $limitacao.Count, $perfMedia) `
-            'Limpar poeira das ventoinhas, verificar pasta térmica e, em notebooks, usar o carregador original' 'aviso'
+            'Limpar poeira das ventoinhas, verificar pasta térmica e, em notebooks, usar o carregador original' 'aviso' -Codigo 'cpu-limitado'
     }
 
     # ---------- LENTIDÃO: disco ----------
     if ($ocioso -lt 10 -and $fila -ge 2) {
         Achado 'Lentidão' 'Disco sobrecarregado' ("Disco ocupado {0:N0}% do tempo, {1:N1} operações na fila" -f (100 - $ocioso), $fila) `
-            'Normal por alguns minutos após ligar ou durante atualizações. Se for constante, o disco é o gargalo (ver troca por SSD)' 'aviso'
+            'Normal por alguns minutos após ligar ou durante atualizações. Se for constante, o disco é o gargalo (ver troca por SSD)' 'aviso' -Codigo 'disco-sobrecarregado'
     }
     $partSistema = Get-Partition -DriveLetter $env:SystemDrive[0]
     $discoSistema = Get-PhysicalDisk | Where-Object { "$($_.DeviceId)" -eq "$($partSistema.DiskNumber)" }
     if ($discoSistema.MediaType -eq 'HDD') {
         Achado 'Lentidão' 'Windows instalado em HD mecânico' ("{0} ({1})" -f $discoSistema.FriendlyName, $discoSistema.MediaType) `
-            'Trocar por SSD: é a melhoria de velocidade mais perceptível em computadores antigos' 'aviso'
+            'Trocar por SSD: é a melhoria de velocidade mais perceptível em computadores antigos' 'aviso' -Codigo 'disco-hdd'
     }
     $volSistema = Get-Volume -DriveLetter $env:SystemDrive[0]
     $livre = $volSistema.SizeRemaining / $volSistema.Size * 100
     if ($livre -lt 10) {
         Achado 'Lentidão' "Pouco espaço livre no disco $env:SystemDrive" ("{0} livres ({1:N0}%)" -f (FormatTam $volSistema.SizeRemaining), $livre) `
             'Rodar a limpeza e mover arquivos grandes para a rede/nuvem. Com menos de 10% livre o Windows fica lento' `
-            $(if ($livre -lt 5) { 'erro' } else { 'aviso' }) { Limpeza } 'Executar a limpeza de arquivos'
+            $(if ($livre -lt 5) { 'erro' } else { 'aviso' }) { Limpeza } 'Executar a limpeza de arquivos' -Codigo 'disco-espaco'
     }
     $errosDisco = Eventos @{ LogName = 'System'; ProviderName = 'disk', 'Ntfs', 'stornvme', 'storahci', 'iaStorA', 'iaStorAC'; Level = 1, 2, 3 } 30
     if ($errosDisco.Count -gt 0) {
         Achado 'Hardware' 'Erros de leitura/gravação no disco' ("{0} erros registrados nos últimos 30 dias" -f $errosDisco.Count) `
-            'FAZER BACKUP dos arquivos do usuário e verificar o disco (opção 7). Erros de disco costumam piorar até a falha total' 'erro'
+            'FAZER BACKUP dos arquivos do usuário e verificar o disco (opção 7). Erros de disco costumam piorar até a falha total' 'erro' -Codigo 'disco-erros' -UltimoEvento ($errosDisco | Sort-Object TimeCreated -Descending | Select-Object -First 1).TimeCreated
     }
     foreach ($d in Get-PhysicalDisk | Where-Object { $_.HealthStatus -ne 'Healthy' }) {
         Achado 'Hardware' "Disco com saúde comprometida: $($d.FriendlyName)" ("Status SMART: {0}" -f $d.HealthStatus) `
-            'Fazer backup imediatamente e providenciar a troca do disco' 'erro'
+            'Fazer backup imediatamente e providenciar a troca do disco' 'erro' -Codigo "disco-smart:$($d.FriendlyName)"
     }
 
     # ---------- LENTIDÃO: inicialização ----------
@@ -479,32 +486,32 @@ function Analisar-Problemas {
             $ev = "Tempo médio para ligar: {0:N0} segundos" -f $bootSeg
             if ($lentos) { $ev += ". Itens que mais atrasam: " + ($lentos -join '; ') }
             Achado 'Lentidão' 'Windows demora para iniciar' $ev 'Desativar programas desnecessários na inicialização (opção 5) e atualizar os drivers listados' `
-                $(if ($bootSeg -gt 180) { 'erro' } else { 'aviso' })
+                $(if ($bootSeg -gt 180) { 'erro' } else { 'aviso' }) -Codigo 'inicializacao-lenta'
         }
     }
     $qtdStartup = @(Get-CimInstance Win32_StartupCommand).Count
     if ($qtdStartup -gt 12) {
         Achado 'Lentidão' 'Muitos programas abrindo com o Windows' "$qtdStartup programas na inicialização" `
-            'Desativar os que não são necessários (opção 5)' 'aviso' { Inicializacao } 'Ver e desativar programas da inicialização'
+            'Desativar os que não são necessários (opção 5)' 'aviso' { Inicializacao } 'Ver e desativar programas da inicialização' -Codigo 'inicializacao-programas'
     }
 
     # ---------- LENTIDÃO: energia ----------
     $plano = (powercfg /getactivescheme) -replace '.*\((.*)\).*', '$1'
     if ($plano -match 'Economia|Power saver') {
         Achado 'Lentidão' 'Plano de energia em modo Economia' "Plano ativo: $plano" 'Usar o plano Equilibrado ou Alto desempenho' 'aviso' `
-            { powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e | Out-Null } 'Ativar o plano de energia Equilibrado'
+            { powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e | Out-Null } 'Ativar o plano de energia Equilibrado' -Codigo 'energia-economia'
     }
     $bat = Get-CimInstance Win32_Battery
     if ($bat) {
         if ($bat.BatteryStatus -eq 1) {
             Achado 'Lentidão' 'Notebook funcionando na bateria' 'Fora da tomada o Windows reduz o desempenho para economizar energia' `
-                'Ligar na tomada com o carregador original' 'info'
+                'Ligar na tomada com o carregador original' 'info' -Codigo 'bateria-em-uso'
         }
         $cheia = (Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity | Select-Object -First 1).FullChargedCapacity
         $projeto = (Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData | Select-Object -First 1).DesignedCapacity
         if ($cheia -and $projeto -and ($cheia / $projeto) -lt 0.6) {
             Achado 'Hardware' 'Bateria desgastada' ("Bateria segura {0:N0}% da carga original" -f ($cheia / $projeto * 100)) `
-                'Solicitar troca da bateria; bateria fraca também limita o desempenho' 'aviso'
+                'Solicitar troca da bateria; bateria fraca também limita o desempenho' 'aviso' -Codigo 'bateria-desgastada'
         }
     }
 
@@ -538,26 +545,27 @@ function Analisar-Problemas {
         }
         Achado 'Travamentos' 'Telas azuis (o Windows travou e reiniciou)' ("{0} nos últimos 30 dias. {1}" -f $bsod.Count, ($codigos -join ' | ')) `
             'Atualizar drivers e Windows (opção 8). Se continuar, testar a memória RAM com o Diagnóstico de Memória' 'erro' `
-            { Start-Process mdsched.exe } 'Abrir o Diagnóstico de Memória do Windows (testa a RAM ao reiniciar)'
+            { Start-Process mdsched.exe } 'Abrir o Diagnóstico de Memória do Windows (testa a RAM ao reiniciar)' `
+            -Codigo 'bsod' -UltimoEvento ($bsod | Sort-Object TimeCreated -Descending | Select-Object -First 1).TimeCreated
     }
     $quedas = Eventos @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-Power'; Id = 41 } 30
     if ($quedas.Count) {
         Achado 'Travamentos' 'Desligamentos inesperados' ("{0} vezes nos últimos 30 dias o PC desligou sem encerrar o Windows" -f $quedas.Count) `
             'Causas comuns: queda de energia, botão desligar pressionado, fonte de alimentação ou superaquecimento. Verificar nobreak, fonte e ventilação' `
-            $(if ($quedas.Count -ge 3) { 'erro' } else { 'aviso' })
+            $(if ($quedas.Count -ge 3) { 'erro' } else { 'aviso' }) -Codigo 'desligamento-inesperado' -UltimoEvento ($quedas | Sort-Object TimeCreated -Descending | Select-Object -First 1).TimeCreated
     }
     $whea = Eventos @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger' } 30
     if ($whea.Count) {
         $graves = @($whea | Where-Object { $_.Level -le 2 }).Count
         Achado 'Hardware' 'Erros de hardware registrados pelo Windows' ("{0} eventos ({1} graves) nos últimos 30 dias" -f $whea.Count, $graves) `
             'Indica falha de processador, memória RAM ou placa-mãe. Testar a memória e acionar a garantia/fabricante se persistir' `
-            $(if ($graves) { 'erro' } else { 'aviso' }) { Start-Process mdsched.exe } 'Abrir o Diagnóstico de Memória do Windows (testa a RAM ao reiniciar)'
+            $(if ($graves) { 'erro' } else { 'aviso' }) { Start-Process mdsched.exe } 'Abrir o Diagnóstico de Memória do Windows (testa a RAM ao reiniciar)' -Codigo 'whea' -UltimoEvento ($whea | Sort-Object TimeCreated -Descending | Select-Object -First 1).TimeCreated
     }
     $falhasApp = Eventos @{ LogName = 'Application'; ProviderName = 'Application Error', 'Application Hang'; Id = 1000, 1002 } 7
     $piores = $falhasApp | ForEach-Object { "$($_.Properties[0].Value)" } | Group-Object | Where-Object Count -ge 3 | Sort-Object Count -Descending | Select-Object -First 4
     if ($piores) {
         Achado 'Travamentos' 'Programas travando ou fechando sozinhos' (($piores | ForEach-Object { "{0} ({1}x)" -f $_.Name, $_.Count }) -join '; ') `
-            'Atualizar ou reparar o programa (Configurações > Aplicativos > Modificar/Reparar). No Office, usar "Reparo Rápido"' 'aviso'
+            'Atualizar ou reparar o programa (Configurações > Aplicativos > Modificar/Reparar). No Office, usar "Reparo Rápido"' 'aviso' -Codigo 'programas-travando'
     }
 
     # ---------- DISPOSITIVOS ----------
@@ -579,31 +587,31 @@ function Analisar-Problemas {
         $nome = if ($d.Name) { $d.Name } else { $d.PNPDeviceID }
         Achado $cat "$nome não está funcionando" ("Erro {0}: {1}" -f $d.ConfigManagerErrorCode, $desc) `
             'Reiniciar o dispositivo; se persistir, reinstalar o driver pelo site do fabricante ou pelo Windows Update (opção 8)' 'erro' `
-            ([scriptblock]::Create("pnputil.exe /restart-device '$($d.PNPDeviceID)' | Out-Null")) "Reiniciar o dispositivo: $nome"
+            ([scriptblock]::Create("pnputil.exe /restart-device '$($d.PNPDeviceID)' | Out-Null")) "Reiniciar o dispositivo: $nome" -Codigo "dispositivo:$nome"
     }
 
     # Câmera
     $cams = @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -in 'Camera', 'Image' -and $_.Present })
     if (-not $cams) {
         Achado 'Câmera' 'Nenhuma câmera detectada' 'O Windows não encontrou nenhuma câmera conectada' `
-            'Se a máquina deveria ter câmera: verificar cabo/porta USB, tampa ou tecla de privacidade do notebook e se não foi desativada na BIOS' 'info'
+            'Se a máquina deveria ter câmera: verificar cabo/porta USB, tampa ou tecla de privacidade do notebook e se não foi desativada na BIOS' 'info' -Codigo 'camera-ausente'
     }
     foreach ($c in $cams | Where-Object { $_.ConfigManagerErrorCode -eq 22 }) {
         Achado 'Câmera' "Câmera desativada: $($c.Name)" 'A câmera foi desativada no Gerenciador de Dispositivos' 'Reativar a câmera' 'erro' `
-            ([scriptblock]::Create("Enable-PnpDevice -InstanceId '$($c.PNPDeviceID)' -Confirm:`$false")) "Reativar a câmera: $($c.Name)"
+            ([scriptblock]::Create("Enable-PnpDevice -InstanceId '$($c.PNPDeviceID)' -Confirm:`$false")) "Reativar a câmera: $($c.Name)" -Codigo "camera-desativada:$($c.Name)"
     }
     foreach ($rec in @(@{ Chave = 'webcam'; Nome = 'câmera'; Cat = 'Câmera' }, @{ Chave = 'microphone'; Nome = 'microfone'; Cat = 'Áudio' })) {
         $politica = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy')."LetAppsAccess$(if ($rec.Chave -eq 'webcam') { 'Camera' } else { 'Microphone' })"
         if ($politica -eq 2) {
             Achado $rec.Cat "Acesso à $($rec.Nome) bloqueado por política" 'Uma política de grupo (GPO/Intune) impede os apps de usar o dispositivo' `
-                'Verificar a política com a equipe de TI responsável pelo domínio' 'erro'
+                'Verificar a política com a equipe de TI responsável pelo domínio' 'erro' -Codigo "acesso-politica:$($rec.Chave)"
         }
         foreach ($hive in 'HKLM', 'HKCU') {
             $chave = "$($hive):\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$($rec.Chave)"
             if ((Get-ItemProperty $chave).Value -eq 'Deny') {
                 $escopo = if ($hive -eq 'HKLM') { 'para todos os usuários' } else { 'para este usuário' }
                 Achado $rec.Cat "Acesso à $($rec.Nome) bloqueado nas configurações de privacidade" "Bloqueado $escopo em Configurações > Privacidade" `
-                    "Liberar o acesso à $($rec.Nome)" 'erro' ([scriptblock]::Create("Set-RegSeguro '$chave' 'Value' 'Allow' 'String'")) "Liberar o acesso à $($rec.Nome) ($escopo)"
+                    "Liberar o acesso à $($rec.Nome)" 'erro' ([scriptblock]::Create("Set-RegSeguro '$chave' 'Value' 'Allow' 'String'")) "Liberar o acesso à $($rec.Nome) ($escopo)" -Codigo "acesso-privacidade:$($rec.Chave)-$hive"
             }
         }
         $emUso = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$($rec.Chave)" -Recurse | ForEach-Object {
@@ -612,7 +620,7 @@ function Analisar-Problemas {
         }
         if ($emUso) {
             Achado $rec.Cat "A $($rec.Nome) está sendo usada por outro programa" ("Em uso agora por: {0}" -f (($emUso | Select-Object -Unique) -join ', ')) `
-                "Se a $($rec.Nome) não funciona no Teams/Zoom/Meet, feche o programa listado: só um app por vez consegue usá-la" 'info'
+                "Se a $($rec.Nome) não funciona no Teams/Zoom/Meet, feche o programa listado: só um app por vez consegue usá-la" 'info' -Codigo "dispositivo-em-uso:$($rec.Chave)"
         }
     }
 
@@ -621,12 +629,12 @@ function Analisar-Problemas {
         $s = Get-Service $svc
         if ($s -and $s.Status -ne 'Running') {
             Achado 'Áudio' "Serviço de áudio parado ($svc)" 'Sem esse serviço não há som nem microfone' 'Iniciar o serviço' 'erro' `
-                ([scriptblock]::Create("Start-Service '$svc'")) "Iniciar o serviço de áudio $svc"
+                ([scriptblock]::Create("Start-Service '$svc'")) "Iniciar o serviço de áudio $svc" -Codigo "audio-servico:$svc"
         }
     }
     if (-not (Get-PnpDevice -Class AudioEndpoint -PresentOnly | Where-Object Status -eq 'OK')) {
         Achado 'Áudio' 'Nenhum dispositivo de som ativo' 'Não há alto-falante, fone ou microfone funcionando' `
-            'Verificar se o fone/caixa está conectado e o driver de áudio instalado' 'aviso'
+            'Verificar se o fone/caixa está conectado e o driver de áudio instalado' 'aviso' -Codigo 'audio-sem-dispositivo'
     }
 
     # ---------- REDE ----------
@@ -634,41 +642,41 @@ function Analisar-Problemas {
     $conexoes = @(Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' })
     foreach ($n in $conexoes | Where-Object { $_.IPv4Address.IPAddress -like '169.254.*' }) {
         Achado 'Rede' "Sem endereço IP em $($n.InterfaceAlias)" 'O computador não recebeu IP do servidor DHCP (endereço 169.254.x.x)' `
-            'Verificar cabo/Wi-Fi e o roteador/servidor DHCP' 'erro' { ipconfig /release | Out-Null; ipconfig /renew | Out-Null } 'Renovar o endereço IP'
+            'Verificar cabo/Wi-Fi e o roteador/servidor DHCP' 'erro' { ipconfig /release | Out-Null; ipconfig /renew | Out-Null } 'Renovar o endereço IP' -Codigo "rede-sem-ip:$($n.InterfaceAlias)"
     }
     if (-not ($conexoes | Where-Object IPv4DefaultGateway)) {
-        Achado 'Rede' 'Sem conexão de rede' 'Nenhum adaptador conectado com acesso a gateway' 'Verificar cabo de rede ou conexão Wi-Fi (opção 6 para diagnóstico)' 'erro'
+        Achado 'Rede' 'Sem conexão de rede' 'Nenhum adaptador conectado com acesso a gateway' 'Verificar cabo de rede ou conexão Wi-Fi (opção 6 para diagnóstico)' 'erro' -Codigo 'rede-sem-conexao'
     } else {
         if (-not (Resolve-DnsName 'www.microsoft.com' -DnsOnly)) {
             Achado 'Rede' 'Falha na resolução de nomes (DNS)' 'Os sites não são encontrados pelo nome' `
-                'Limpar o cache DNS; se persistir, verificar o servidor DNS da empresa' 'erro' { Clear-DnsClientCache } 'Limpar o cache DNS'
+                'Limpar o cache DNS; se persistir, verificar o servidor DNS da empresa' 'erro' { Clear-DnsClientCache } 'Limpar o cache DNS' -Codigo 'rede-dns'
         }
     }
     $sinal = (netsh wlan show interfaces) | Select-String '^\s*(Sinal|Signal)\s*:\s*(\d+)\s*%' | Select-Object -First 1
     if ($sinal -and [int]$sinal.Matches[0].Groups[2].Value -lt 50) {
         Achado 'Rede' 'Sinal de Wi-Fi fraco' ("Intensidade do sinal: {0}%" -f $sinal.Matches[0].Groups[2].Value) `
-            'Aproximar do roteador, instalar repetidor/access point ou usar cabo de rede' 'aviso'
+            'Aproximar do roteador, instalar repetidor/access point ou usar cabo de rede' 'aviso' -Codigo 'wifi-sinal-fraco'
     }
     foreach ($a in Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' -and $_.MediaType -eq '802.3' -and $_.ReceiveLinkSpeed -gt 0 -and $_.ReceiveLinkSpeed -lt 1e9 }) {
         Achado 'Rede' "Rede cabeada lenta ($($a.LinkSpeed))" "O adaptador $($a.Name) conectou a $($a.LinkSpeed) em vez de 1 Gbps" `
-            'Possível cabo danificado, conector ruim ou porta do switch limitada. Testar outro cabo/porta' 'aviso'
+            'Possível cabo danificado, conector ruim ou porta do switch limitada. Testar outro cabo/porta' 'aviso' -Codigo "rede-cabo-lento:$($a.Name)"
     }
 
     # ---------- IMPRESSÃO ----------
     $spooler = Get-Service Spooler
     if ($spooler.Status -ne 'Running') {
         Achado 'Impressora' 'Serviço de impressão parado' 'Nenhuma impressora vai funcionar' 'Iniciar o serviço de impressão' 'erro' `
-            { Start-Service Spooler } 'Iniciar o serviço de impressão'
+            { Start-Service Spooler } 'Iniciar o serviço de impressão' -Codigo 'impressora-spooler'
     } else {
         $presos = @(Get-Printer | ForEach-Object { Get-PrintJob -PrinterName $_.Name } |
             Where-Object { "$($_.JobStatus)" -match 'Error|Blocked|Deleting' -or $_.SubmittedTime -lt (Get-Date).AddMinutes(-30) })
         if ($presos) {
             Achado 'Impressora' 'Fila de impressão travada' ("{0} documento(s) parado(s) na fila" -f $presos.Count) `
-                'Reiniciar o serviço de impressão e reenviar os documentos' 'aviso' { Restart-Service Spooler -Force } 'Reiniciar o serviço de impressão'
+                'Reiniciar o serviço de impressão e reenviar os documentos' 'aviso' { Restart-Service Spooler -Force } 'Reiniciar o serviço de impressão' -Codigo 'impressora-fila'
         }
         foreach ($p in Get-Printer | Where-Object { $_.Name -notmatch 'PDF|XPS|OneNote|Fax' -and "$($_.PrinterStatus)" -match 'Offline|Error|PaperJam|PaperOut|NoToner|TonerLow|DoorOpen' }) {
             Achado 'Impressora' "Impressora com problema: $($p.Name)" "Status: $($p.PrinterStatus)" `
-                'Verificar se está ligada, conectada à rede e com papel/toner' 'aviso'
+                'Verificar se está ligada, conectada à rede e com papel/toner' 'aviso' -Codigo "impressora:$($p.Name)"
         }
     }
 }
@@ -1014,13 +1022,37 @@ function Desfazer {
     Pausa
 }
 
+# Identificação do computador para o envio ao fluxo do Teams (contrato v1)
+function Get-IdentificacaoPC {
+    $os   = Get-CimInstance Win32_OperatingSystem
+    $cs   = Get-CimInstance Win32_ComputerSystem
+    $bios = Get-CimInstance Win32_BIOS
+    return @{
+        nome        = $env:COMPUTERNAME
+        usuario     = "$($cs.UserName)"
+        fabricante  = "$($cs.Manufacturer)"
+        modelo      = "$($cs.Model)"
+        numeroSerie = "$($bios.SerialNumber)"
+        windows     = ("{0} (build {1})" -f $os.Caption, $os.BuildNumber)
+        ultimoBoot  = $os.LastBootUpTime
+    }
+}
+
 # =====================================================================
 # MODO AUTOMÁTICO (sem perguntas - para tarefa agendada / GPO / RMM)
 # =====================================================================
 if ($Automatico) {
-    Log "Manutenção automática iniciada em $env:COMPUTERNAME" 'Cyan'
-    ManutencaoCompleta
-    Log "Manutenção automática concluída" 'Cyan'
+    if ($Monitorar) {
+        Log "Monitoramento iniciado em $env:COMPUTERNAME" 'Cyan'
+        Diagnostico
+    } else {
+        Log "Manutenção automática iniciada em $env:COMPUTERNAME" 'Cyan'
+        ManutencaoCompleta
+    }
+    try {
+        Invoke-Monitoramento -Achados $Script:Achados -Itens $Script:Relatorio -Computador (Get-IdentificacaoPC) -PastaBase $Base -VersaoScript $Script:VersaoScript
+    } catch { Log "Falha no monitoramento: $($_.Exception.Message)" 'Red' }
+    if ($Monitorar) { Log "Monitoramento concluído" 'Cyan' } else { Log "Manutenção automática concluída" 'Cyan' }
     exit 0
 }
 
@@ -1031,7 +1063,7 @@ while ($true) {
     Clear-Host
     Write-Host ""
     Write-Host "  ╔══════════════════════════════════════════════╗" -ForegroundColor DarkCyan
-    Write-Host "  ║      OTIMIZADOR EMPRESARIAL  -  v1.1         ║" -ForegroundColor DarkCyan
+    Write-Host "  ║      OTIMIZADOR EMPRESARIAL  -  v$($Script:VersaoScript)         ║" -ForegroundColor DarkCyan
     Write-Host "  ╚══════════════════════════════════════════════╝" -ForegroundColor DarkCyan
     $st = Get-StatusPC
     $corRam = if ($st.RamPct -ge 85) { 'Red' } elseif ($st.RamPct -ge 70) { 'Yellow' } else { 'Green' }
