@@ -5,12 +5,12 @@
   "body": [
     {
       "type": "Container",
-      "style": "${if(situacao == 'resolvido', 'good', if(situacao == 'nova-ocorrencia', 'warning', 'attention'))}",
+      "style": "@{if(equals(items('Apply_to_each')?['situacao'],'resolvido'),'good',if(equals(items('Apply_to_each')?['situacao'],'nova-ocorrencia'),'warning','attention'))}",
       "bleed": true,
       "items": [
         {
           "type": "TextBlock",
-          "text": "${if(situacao == 'resolvido', 'Resolvido', if(situacao == 'nova-ocorrencia', 'Nova ocorrência', 'Novo problema'))} - ${computador.nome}",
+          "text": "@{if(equals(items('Apply_to_each')?['situacao'],'resolvido'),'Resolvido',if(equals(items('Apply_to_each')?['situacao'],'nova-ocorrencia'),'Nova ocorrência','Novo problema'))} - @{body('Parse_JSON')?['computador']?['nome']}",
           "weight": "Bolder",
           "size": "Medium",
           "wrap": true
@@ -19,15 +19,21 @@
     },
     {
       "type": "TextBlock",
-      "text": "${problema}",
+      "text": "@{items('Apply_to_each')?['problema']}",
       "weight": "Bolder",
       "wrap": true
     },
     {
       "type": "FactSet",
       "facts": [
-        { "title": "Computador", "value": "${computador.nome}" },
-        { "title": "Usuário", "value": "${computador.usuario}" }
+        {
+          "title": "Computador",
+          "value": "@{body('Parse_JSON')?['computador']?['nome']}"
+        },
+        {
+          "title": "Usuário",
+          "value": "@{body('Parse_JSON')?['computador']?['usuario']}"
+        }
       ]
     },
     {
@@ -38,7 +44,7 @@
     },
     {
       "type": "TextBlock",
-      "text": "${evidencia}",
+      "text": "@{items('Apply_to_each')?['evidencia']}",
       "wrap": true
     },
     {
@@ -49,7 +55,7 @@
     },
     {
       "type": "TextBlock",
-      "text": "${solucao}",
+      "text": "@{items('Apply_to_each')?['solucao']}",
       "wrap": true
     }
   ]

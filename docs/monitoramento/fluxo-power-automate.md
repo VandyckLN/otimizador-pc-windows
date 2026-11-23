@@ -26,21 +26,23 @@ A URL e o token são segredos: não coloque em chamado, e-mail ou card.
 ## 3. Parse JSON
 
 1. Adicione a ação **Parse JSON** com o conteúdo do corpo do gatilho.
-2. Clique em **Gerar do exemplo** e cole o conteúdo de `exemplo-payload.json`. O esquema é montado sozinho.
+2. Não gere o esquema do exemplo. Abra [`esquema-parse-json.json`](esquema-parse-json.json), copie tudo e cole no campo **Esquema**. Ele já aceita `ultimoEvento` como texto ou vazio (`null`).
+3. Não use "Gerar do exemplo" com `exemplo-payload.json`: o primeiro alerta tem `ultimoEvento` vazio, o gerador assume que o campo nunca é texto e o Parse JSON falha nos alertas de tela azul.
+4. Deixe a ação com o nome `Parse_JSON` (o padrão): os cards usam esse nome.
 
 ## 4. Validar token e versão
 
 1. Adicione uma **Condição** com duas regras (E):
    - `token` é igual a `tokenEsperado`
    - `versaoEsquema` é igual a `1`
-2. Se for **falso**: poste no canal o card "payload rejeitado" com o `computador.nome` e encerre o fluxo (**Terminate**). **Nunca** coloque o token no card.
+2. Se for **falso**: use **Post card in a chat or channel**, cole no campo **Adaptive Card** o conteúdo de [`card-rejeitado.json`](card-rejeitado.json) (mostra só o nome do computador) e depois encerre o fluxo (**Terminate**). **Nunca** coloque o token no card.
 3. Se for **verdadeiro**: continue no passo 5.
 
 ## 5. Tratar cada alerta
 
 Adicione **Apply to each** sobre `alertas` e, dentro dele, três condições:
 
-- **Postar o card:** `situacao` é `novo` ou `nova-ocorrencia` **e** `destino` é diferente de `nenhum`. Ação: **Post card in a chat or channel** com o conteúdo de `card-teams.json` (campos `${computador.nome}`, `${computador.usuario}`, `${problema}`, `${evidencia}` e `${solucao}`).
+- **Postar o card:** `situacao` é `novo` ou `nova-ocorrencia` **e** `destino` é diferente de `nenhum`. Ação: **Post card in a chat or channel**, colando no campo **Adaptive Card** (dentro do Apply to each) o conteúdo de [`card-teams.json`](card-teams.json). O cartão usa expressões do Power Automate (`@{...}`), não o modelo `${...}` do Adaptive Cards, e elas assumem os nomes de ação `Apply_to_each` e `Parse_JSON`. Se você renomeou alguma ação, troque o nome nas expressões (por exemplo `items('Apply_to_each')` e `body('Parse_JSON')`).
 - **Criar tarefa:** `situacao` é `novo` **e** `destino` é `tarefa`. Ação: **Create a task** (Planner), com título `[<computador.nome>] <problema>` e a evidência e a solução na descrição.
 - **Resolvido:** `situacao` é `resolvido` **e** `destino` é diferente de `nenhum`. Ação: postar o card de "resolvido" (mesmo card, cabeçalho verde).
 
