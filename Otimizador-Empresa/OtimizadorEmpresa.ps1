@@ -10,11 +10,13 @@
       Automático  : MANUTENCAO_AUTOMATICA.bat  (limpeza segura + relatório, sem perguntas)
       Parâmetros  : -Automatico  -PastaRelatorio "\\servidor\ti\relatorios"
       Monitoramento: -Monitorar  (diagnóstico sem limpeza + envio dos alertas ao fluxo do Teams)
+                     -SemAtraso  (com -Monitorar: pula a espera aleatória de 0 a 15 min; para testes manuais)
 #>
 param(
     [switch]$Automatico,
     [string]$PastaRelatorio,
-    [switch]$Monitorar
+    [switch]$Monitorar,
+    [switch]$SemAtraso
 )
 if ($Monitorar) { $Automatico = $true }
 $Script:VersaoScript = '1.2'
@@ -25,6 +27,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     $argumentos = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     if ($Automatico) { $argumentos += ' -Automatico' }
     if ($Monitorar) { $argumentos += ' -Monitorar' }
+    if ($SemAtraso) { $argumentos += ' -SemAtraso' }
     if ($PastaRelatorio) { $argumentos += " -PastaRelatorio `"$PastaRelatorio`"" }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argumentos
     exit
@@ -1043,6 +1046,12 @@ function Get-IdentificacaoPC {
 # =====================================================================
 if ($Automatico) {
     if ($Monitorar) {
+        if (-not $SemAtraso) {
+            # Espalha os envios dos PCs ao longo de 15 minutos para não disparar o fluxo 50 vezes no mesmo segundo
+            $atraso = Get-Random -Maximum 901
+            Log "Monitoramento: aguardando $atraso s (atraso aleatório; use -SemAtraso para pular)" 'Gray'
+            Start-Sleep -Seconds $atraso
+        }
         Log "Monitoramento iniciado em $env:COMPUTERNAME" 'Cyan'
         Diagnostico
     } else {
