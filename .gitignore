@@ -17,3 +17,7 @@ desktop.ini
 
 # Edição pessoal (mantida só localmente)
 Otimizador/
+
+# Monitoramento (segredos e estado locais)
+Otimizador-Empresa/config.json
+Otimizador-Empresa/estado/
