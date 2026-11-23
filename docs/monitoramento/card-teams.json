@@ -5,12 +5,12 @@
   "body": [
     {
       "type": "Container",
-      "style": "@{if(equals(items('Apply_to_each')?['situacao'],'resolvido'),'good',if(equals(items('Apply_to_each')?['situacao'],'nova-ocorrencia'),'warning','attention'))}",
+      "style": "@{if(equals(items('For_each')?['situacao'],'resolvido'),'good',if(equals(items('For_each')?['situacao'],'nova-ocorrencia'),'warning','attention'))}",
       "bleed": true,
       "items": [
         {
           "type": "TextBlock",
-          "text": "@{if(equals(items('Apply_to_each')?['situacao'],'resolvido'),'Resolvido',if(equals(items('Apply_to_each')?['situacao'],'nova-ocorrencia'),'Nova ocorrência','Novo problema'))} - @{body('Parse_JSON')?['computador']?['nome']}",
+          "text": "@{if(equals(items('For_each')?['situacao'],'resolvido'),'Resolvido',if(equals(items('For_each')?['situacao'],'nova-ocorrencia'),'Nova ocorrência','Novo problema'))} - @{body('Parse_JSON')?['computador']?['nome']}",
           "weight": "Bolder",
           "size": "Medium",
           "wrap": true
@@ -19,7 +19,7 @@
     },
     {
       "type": "TextBlock",
-      "text": "@{items('Apply_to_each')?['problema']}",
+      "text": "@{items('For_each')?['problema']}",
       "weight": "Bolder",
       "wrap": true
     },
@@ -44,7 +44,7 @@
     },
     {
       "type": "TextBlock",
-      "text": "@{items('Apply_to_each')?['evidencia']}",
+      "text": "@{items('For_each')?['evidencia']}",
       "wrap": true
     },
     {
@@ -55,7 +55,7 @@
     },
     {
       "type": "TextBlock",
-      "text": "@{items('Apply_to_each')?['solucao']}",
+      "text": "@{items('For_each')?['solucao']}",
       "wrap": true
     }
   ]

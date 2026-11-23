@@ -27,7 +27,11 @@
       "facts": [
         {
           "title": "Computador",
-          "value": "@{body('Parse_JSON')?['computador']?['nome']}"
+          "value": "@{triggerBody()?['computador']?['nome']}"
+        },
+        {
+          "title": "Versão do esquema recebida",
+          "value": "@{triggerBody()?['versaoEsquema']}"
         }
       ]
     },
