@@ -1,0 +1,66 @@
+{
+  "versaoEsquema": 1,
+  "versaoScript": "1.2",
+  "enviadoEm": "2026-11-23T10:00:00-03:00",
+  "token": "TROQUE-PELO-TOKEN-DO-CONFIG",
+  "computador": {
+    "nome": "PC-FINANCEIRO-03",
+    "usuario": "PC-FINANCEIRO-03\\maria",
+    "fabricante": "Dell Inc.",
+    "modelo": "OptiPlex 3080",
+    "numeroSerie": "ABC123",
+    "windows": "Microsoft Windows 11 Pro (build 22631)",
+    "ultimoBoot": "2026-11-22T08:01:00-03:00"
+  },
+  "alertas": [
+    {
+      "codigo": "disco-espaco",
+      "categoria": "Desempenho",
+      "problema": "Pouco espaço livre no disco do sistema",
+      "evidencia": "Disco C: com 6% livre (14 GB de 238 GB).",
+      "solucao": "Executar a limpeza do Otimizador e remover arquivos grandes que não sejam mais necessários.",
+      "gravidade": "erro",
+      "destino": "tarefa",
+      "situacao": "novo",
+      "ultimoEvento": null
+    },
+    {
+      "codigo": "reinicio-pendente",
+      "categoria": "Atualizações",
+      "problema": "Reinicialização pendente há vários dias",
+      "evidencia": "O Windows aguarda reiniciar para concluir atualizações; sem reiniciar há 12 dia(s).",
+      "solucao": "Pedir ao usuário para reiniciar o computador.",
+      "gravidade": "aviso",
+      "destino": "card",
+      "situacao": "persiste",
+      "ultimoEvento": null
+    },
+    {
+      "codigo": "bsod",
+      "categoria": "Travamentos",
+      "problema": "Telas azuis (o Windows travou e reiniciou)",
+      "evidencia": "2 nos últimos 30 dias. Último código: 0x0000009F (DRIVER_POWER_STATE_FAILURE).",
+      "solucao": "Atualizar drivers (vídeo, rede e chipset) e a BIOS; se continuar, testar a memória RAM.",
+      "gravidade": "erro",
+      "destino": "tarefa",
+      "situacao": "nova-ocorrencia",
+      "ultimoEvento": "2026-11-21T14:10:00-03:00"
+    },
+    {
+      "codigo": "antivirus-desatualizado",
+      "categoria": "Segurança",
+      "problema": "Antivírus desatualizado",
+      "evidencia": "Última atualização das assinaturas há 9 dia(s).",
+      "solucao": "Atualizar as definições do antivírus.",
+      "gravidade": "aviso",
+      "destino": "card",
+      "situacao": "resolvido",
+      "ultimoEvento": null
+    }
+  ],
+  "itens": [
+    { "secao": "Hardware", "nome": "Memória RAM", "valor": "9,33 GB de 15,89 GB em uso (59%)", "status": "ok" },
+    { "secao": "Hardware", "nome": "Espaço livre (C:)", "valor": "6% livre (14 GB de 238 GB)", "status": "erro" },
+    { "secao": "Segurança", "nome": "Firewall", "valor": "Ativo em todos os perfis", "status": "ok" }
+  ]
+}

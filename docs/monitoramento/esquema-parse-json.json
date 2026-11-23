@@ -1,0 +1,136 @@
+{
+  "type": "object",
+  "properties": {
+    "versaoEsquema": {
+      "type": "integer"
+    },
+    "versaoScript": {
+      "type": "string"
+    },
+    "enviadoEm": {
+      "type": "string"
+    },
+    "token": {
+      "type": "string"
+    },
+    "computador": {
+      "type": "object",
+      "properties": {
+        "nome": {
+          "type": "string"
+        },
+        "usuario": {
+          "type": "string"
+        },
+        "fabricante": {
+          "type": "string"
+        },
+        "modelo": {
+          "type": "string"
+        },
+        "numeroSerie": {
+          "type": "string"
+        },
+        "windows": {
+          "type": "string"
+        },
+        "ultimoBoot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nome",
+        "usuario",
+        "fabricante",
+        "modelo",
+        "numeroSerie",
+        "windows",
+        "ultimoBoot"
+      ]
+    },
+    "alertas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "codigo": {
+            "type": "string"
+          },
+          "categoria": {
+            "type": "string"
+          },
+          "problema": {
+            "type": "string"
+          },
+          "evidencia": {
+            "type": "string"
+          },
+          "solucao": {
+            "type": "string"
+          },
+          "gravidade": {
+            "type": "string"
+          },
+          "destino": {
+            "type": "string"
+          },
+          "situacao": {
+            "type": "string"
+          },
+          "ultimoEvento": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "codigo",
+          "categoria",
+          "problema",
+          "evidencia",
+          "solucao",
+          "gravidade",
+          "destino",
+          "situacao",
+          "ultimoEvento"
+        ]
+      }
+    },
+    "itens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "secao": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "valor": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secao",
+          "nome",
+          "valor",
+          "status"
+        ]
+      }
+    }
+  },
+  "required": [
+    "versaoEsquema",
+    "versaoScript",
+    "enviadoEm",
+    "token",
+    "computador",
+    "alertas",
+    "itens"
+  ]
+}

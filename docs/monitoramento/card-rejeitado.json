@@ -1,0 +1,40 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.4",
+  "body": [
+    {
+      "type": "Container",
+      "style": "attention",
+      "bleed": true,
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Payload rejeitado",
+          "weight": "Bolder",
+          "size": "Medium",
+          "wrap": true
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "O fluxo recebeu um envio com token ou versão do esquema inválidos.",
+      "wrap": true
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        {
+          "title": "Computador",
+          "value": "@{body('Parse_JSON')?['computador']?['nome']}"
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Confira se o token do config.json desta máquina é igual ao da variável tokenEsperado do fluxo. Durante a troca de token, isso é esperado.",
+      "wrap": true
+    }
+  ]
+}
