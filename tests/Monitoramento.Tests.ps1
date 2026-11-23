@@ -52,16 +52,71 @@ Describe 'Comparar-Alertas' {
         $r2.Estado['w'].Destino | Should -Be 'tarefa'
     }
 
-    It 'codigo no estado e ausente nos atuais -> resolvido, remove a chave, dados do estado' {
+    It 'alerta sem evento ausente por 7 dias -> resolvido, remove a chave, dados do estado' {
         $r1 = Comparar-Alertas -Atuais @(Novo-Alerta -Codigo 'a' -Problema 'Meu problema') -Estado @{} -Agora $Agora
+        $r2 = Comparar-Alertas -Atuais @() -Estado $r1.Estado -Agora $Agora.AddDays(1)
+        $r2.Alertas.Count | Should -Be 0
+        $r2.Estado.ContainsKey('a') | Should -BeTrue
+        $r2.Estado['a'].AusenteDesde | Should -Be $Agora.AddDays(1)
+
+        $r3 = Comparar-Alertas -Atuais @() -Estado $r2.Estado -Agora $Agora.AddDays(4)
+        $r3.Alertas.Count | Should -Be 0
+        $r3.Estado['a'].AusenteDesde | Should -Be $Agora.AddDays(1)
+
+        $r4 = Comparar-Alertas -Atuais @() -Estado $r3.Estado -Agora $Agora.AddDays(8)
+        $r4.Alertas.Count | Should -Be 1
+        $r4.Alertas[0].Situacao | Should -Be 'resolvido'
+        $r4.Alertas[0].Problema | Should -Be 'Meu problema'
+        $r4.Alertas[0].Codigo | Should -Be 'a'
+        $r4.Alertas[0].Evidencia | Should -Be ''
+        $r4.Alertas[0].Solucao | Should -Be ''
+        $r4.Estado.ContainsKey('a') | Should -BeFalse
+    }
+
+    It 'alerta sem evento ausente 1 dia e de volta -> persiste e limpa AusenteDesde' {
+        $a = Novo-Alerta -Codigo 'ram-esgotada' -Destino 'card'
+        $r1 = Comparar-Alertas -Atuais @($a) -Estado @{} -Agora $Agora
+        $r2 = Comparar-Alertas -Atuais @() -Estado $r1.Estado -Agora $Agora.AddDays(1)
+        $r2.Alertas.Count | Should -Be 0
+        $r3 = Comparar-Alertas -Atuais @($a) -Estado $r2.Estado -Agora $Agora.AddDays(2)
+        $r3.Alertas.Count | Should -Be 1
+        $r3.Alertas[0].Situacao | Should -Be 'persiste'
+        $r3.Estado['ram-esgotada'].AusenteDesde | Should -BeNullOrEmpty
+        $r3.Estado['ram-esgotada'].PrimeiraVez | Should -Be $Agora
+    }
+
+    It 'alerta sem evento ausente e de volta com destino maior -> novo' {
+        $r1 = Comparar-Alertas -Atuais @(Novo-Alerta -Codigo 'w' -Gravidade 'aviso' -Destino 'nenhum') -Estado @{} -Agora $Agora
+        $r2 = Comparar-Alertas -Atuais @() -Estado $r1.Estado -Agora $Agora.AddDays(1)
+        $r3 = Comparar-Alertas -Atuais @(Novo-Alerta -Codigo 'w' -Gravidade 'erro' -Destino 'card') -Estado $r2.Estado -Agora $Agora.AddDays(2)
+        $r3.Alertas[0].Situacao | Should -Be 'novo'
+        $r3.Estado['w'].Destino | Should -Be 'card'
+        $r3.Estado['w'].AusenteDesde | Should -BeNullOrEmpty
+    }
+
+    It 'disco-espaco: novo, ausente 3 dias, volta -> persiste, sem segundo novo' {
+        $d = Novo-Alerta -Codigo 'disco-espaco' -Gravidade 'aviso' -Destino 'tarefa'
+        $situacoes = @()
+        $r = Comparar-Alertas -Atuais @($d) -Estado @{} -Agora $Agora
+        $situacoes += @($r.Alertas | ForEach-Object { $_.Situacao })
+        $est = $r.Estado
+        foreach ($dia in 1..3) {
+            $r = Comparar-Alertas -Atuais @() -Estado $est -Agora $Agora.AddDays($dia)
+            $situacoes += @($r.Alertas | ForEach-Object { $_.Situacao })
+            $est = $r.Estado
+        }
+        $r = Comparar-Alertas -Atuais @($d) -Estado $est -Agora $Agora.AddDays(4)
+        $situacoes += @($r.Alertas | ForEach-Object { $_.Situacao })
+        $situacoes -join ',' | Should -Be 'novo,persiste'
+        @($situacoes | Where-Object { $_ -eq 'novo' }).Count | Should -Be 1
+    }
+
+    It 'alerta baseado em evento ausente -> continua resolvendo na hora (regra de evento)' {
+        $r1 = Comparar-Alertas -Atuais @(Novo-Alerta -Codigo 'bsod' -Destino 'tarefa' -UltimoEvento $Agora.AddDays(-1)) -Estado @{} -Agora $Agora
         $r2 = Comparar-Alertas -Atuais @() -Estado $r1.Estado -Agora $Agora.AddDays(1)
         $r2.Alertas.Count | Should -Be 1
         $r2.Alertas[0].Situacao | Should -Be 'resolvido'
-        $r2.Alertas[0].Problema | Should -Be 'Meu problema'
-        $r2.Alertas[0].Codigo | Should -Be 'a'
-        $r2.Alertas[0].Evidencia | Should -Be ''
-        $r2.Alertas[0].Solucao | Should -Be ''
-        $r2.Estado.ContainsKey('a') | Should -BeFalse
+        $r2.Estado.ContainsKey('bsod') | Should -BeFalse
     }
 
     It 'ausente e ja resolvido -> nao emite e remove' {
@@ -304,6 +359,29 @@ Describe 'Ler-Estado / Salvar-Estado' {
         $r['b'].UltimoEvento | Should -BeOfType [datetime]
         $r['b'].Resolvido | Should -BeTrue
     }
+    It 'ida e volta preserva AusenteDesde' {
+        $p = Join-Path $TestDrive 'est-ausente.json'
+        $est = @{ 'disco-espaco' = @{ Destino = 'tarefa'; Gravidade = 'aviso'; Categoria = 'C'; Problema = 'P'
+                                      PrimeiraVez = [datetime]'2026-11-20T09:30:00'; UltimoEvento = $null; Resolvido = $false
+                                      AusenteDesde = [datetime]'2026-11-22T10:00:00' }
+                  'b' = @{ Destino = 'card'; Gravidade = 'erro'; Categoria = 'C'; Problema = 'P'
+                           PrimeiraVez = [datetime]'2026-11-01T09:30:00'; UltimoEvento = $null; Resolvido = $false } }
+        Salvar-Estado $est $p
+        $r = Ler-Estado $p
+        $r['disco-espaco'].AusenteDesde | Should -BeOfType [datetime]
+        $r['disco-espaco'].AusenteDesde | Should -Be ([datetime]'2026-11-22T10:00:00')
+        $r['b'].AusenteDesde | Should -BeNullOrEmpty
+    }
+    It 'grava de forma atomica: sobrescreve o arquivo existente e nao deixa .tmp' {
+        $p = Join-Path $TestDrive 'est-atomico.json'
+        Set-Content $p '{"velho":1}' -Encoding UTF8
+        $est = @{ 'a' = @{ Destino = 'card'; Gravidade = 'erro'; Categoria = 'C'; Problema = 'P'
+                           PrimeiraVez = [datetime]'2026-11-20T09:30:00'; UltimoEvento = $null; Resolvido = $false } }
+        Salvar-Estado $est $p
+        (Ler-Estado $p).ContainsKey('a') | Should -BeTrue
+        (Ler-Estado $p).ContainsKey('velho') | Should -BeFalse
+        Test-Path ($p + '.tmp') | Should -BeFalse
+    }
     It 'cria a pasta ao salvar' {
         $p = Join-Path (Join-Path $TestDrive 'sub') 'e.json'
         Salvar-Estado @{} $p
@@ -386,5 +464,48 @@ Describe 'Invoke-Monitoramento' {
             $Script:LogCapturado | Should -Not -Match 'TOK'
             $Script:LogCapturado | Should -Not -Match 'x\.com'
         }
+        It 'envio ok mas Salvar-Estado falha -> mensagem exata e nada lanca' {
+            Mock Enviar-Payload { $true }
+            Mock Salvar-Estado { throw 'disco cheio' }
+            { Invoke-Monitoramento $Ach @() $Comp $Base '1.2' } | Should -Not -Throw
+            Should -Invoke Enviar-Payload -Times 1 -Exactly
+            $Script:LogCapturado | Should -Match 'enviado, mas o estado não foi gravado — a próxima execução pode repetir alertas'
+            $Script:LogCapturado | Should -Not -Match 'erro inesperado'
+            Test-Path $Estado | Should -BeFalse
+        }
+        It 'erro inesperado -> loga a mensagem sem URL e sem token, nada lanca' {
+            Mock Coletar-Alertas { throw 'falhou ao chamar https://x.com/a?sig=SEGREDO com TOK' }
+            Mock Enviar-Payload { $true }
+            { Invoke-Monitoramento $Ach @() $Comp $Base '1.2' } | Should -Not -Throw
+            Should -Invoke Enviar-Payload -Times 0 -Exactly
+            $Script:LogCapturado | Should -Match 'erro inesperado'
+            $Script:LogCapturado | Should -Match 'falhou ao chamar \[url\]'
+            $Script:LogCapturado | Should -Not -Match 'x\.com'
+            $Script:LogCapturado | Should -Not -Match 'SEGREDO'
+            $Script:LogCapturado | Should -Not -MatchExactly 'TOK'
+            $Script:LogCapturado | Should -Match '\[token\]'
+        }
+    }
+}
+
+Describe 'Proteger-Config' {
+    BeforeEach {
+        $Script:LogCapturado = ''
+        function Log { param($m, $c) $Script:LogCapturado += "$m|$c`n" }
+        $Script:Cfg = Join-Path $TestDrive 'config.json'
+        Set-Content $Script:Cfg '{"urlFluxo":"https://x.com/a","token":"TOKEN-SECRETO"}' -Encoding UTF8
+    }
+    It 'icacls com codigo de saida diferente de zero -> aviso amarelo sem segredos' {
+        function icacls { $global:LASTEXITCODE = 5; 'Acesso negado' }
+        { Proteger-Config $Script:Cfg } | Should -Not -Throw
+        $Script:LogCapturado | Should -Match 'icacls'
+        $Script:LogCapturado | Should -Match '\|Yellow'
+        $Script:LogCapturado | Should -Not -Match 'TOKEN-SECRETO'
+        $Script:LogCapturado | Should -Not -Match 'x\.com'
+    }
+    It 'icacls com sucesso -> nenhum aviso' {
+        function icacls { $global:LASTEXITCODE = 0; 'processado' }
+        Proteger-Config $Script:Cfg
+        $Script:LogCapturado | Should -Be ''
     }
 }
