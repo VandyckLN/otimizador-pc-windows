@@ -1,0 +1,56 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.4",
+  "body": [
+    {
+      "type": "Container",
+      "style": "${if(situacao == 'resolvido', 'good', if(situacao == 'nova-ocorrencia', 'warning', 'attention'))}",
+      "bleed": true,
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "${if(situacao == 'resolvido', 'Resolvido', if(situacao == 'nova-ocorrencia', 'Nova ocorrência', 'Novo problema'))} - ${computador.nome}",
+          "weight": "Bolder",
+          "size": "Medium",
+          "wrap": true
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "${problema}",
+      "weight": "Bolder",
+      "wrap": true
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        { "title": "Computador", "value": "${computador.nome}" },
+        { "title": "Usuário", "value": "${computador.usuario}" }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Evidência",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${evidencia}",
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "O que fazer",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${solucao}",
+      "wrap": true
+    }
+  ]
+}

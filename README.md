@@ -62,6 +62,28 @@ schtasks /Create /TN "Manutencao Otimizador" /SC WEEKLY /D FRI /ST 18:00 /RU SYS
 
 ---
 
+## Monitoramento (Teams/Planner)
+
+Uma vez por dia, cada PC pode enviar um aviso para um fluxo do Power Automate, que posta cards no canal de suporte do Teams e cria tarefas no Planner.
+
+**O que é enviado:** nome do computador, usuário, fabricante/modelo, número de série, versão do Windows, último boot, os alertas encontrados (problema, evidência e o que fazer) e o resumo do diagnóstico. **Não é enviado:** arquivos pessoais, senhas, histórico de navegação nem conteúdo de documentos.
+
+**Como configurar:**
+
+1. Monte o fluxo seguindo o [guia do fluxo](docs/monitoramento/fluxo-power-automate.md).
+2. Na pasta `Otimizador-Empresa`, copie `config.exemplo.json` para `config.json` e preencha `urlFluxo` e `token`. O `config.json` fica fora do git.
+3. Teste com `Otimizador-Empresa\Testar-Envio.ps1` e confira se o card chegou no canal.
+
+Sem `config.json`, o script funciona como antes e só registra um aviso no log.
+
+Agendar o monitoramento diário às 10h (rodar como administrador), além da tarefa semanal de manutenção acima:
+
+```bat
+schtasks /Create /TN "Monitoramento Otimizador" /SC DAILY /ST 10:00 /RU SYSTEM /RL HIGHEST /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\TI\Otimizador-Empresa\OtimizadorEmpresa.ps1 -Monitorar"
+```
+
+---
+
 ## Segurança
 
 - Exige administrador e cria **ponto de restauração** antes de alterar o sistema
@@ -81,6 +103,5 @@ schtasks /Create /TN "Manutencao Otimizador" /SC WEEKLY /D FRI /ST 18:00 /RU SYS
 
 - Painel central com os relatórios de todas as máquinas
 - Inventário de softwares instalados e licenças
-- Alertas por e-mail/Teams quando o disco estiver quase cheio ou o antivírus desatualizado
 - Remoção padronizada de bloatware de fábrica
 - Versão para servidores Windows
