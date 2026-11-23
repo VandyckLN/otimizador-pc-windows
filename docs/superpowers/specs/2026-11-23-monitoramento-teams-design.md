@@ -148,7 +148,10 @@ A classificação de cada código fica num **mapa único no script** (código �
   - `novo`: apareceu agora → o fluxo posta card e, se for `tarefa`, cria a tarefa;
   - `persiste`: já tinha sido reportado → o fluxo não faz nada (ou só atualiza a
     tarefa, se for simples de implementar no fluxo);
-  - `resolvido`: estava no estado e sumiu → o fluxo posta "resolvido" no canal.
+  - `resolvido`: estava no estado e sumiu há **7 dias** → o fluxo posta "resolvido"
+    no canal. Se voltar antes disso, continua `persiste` e não abre outra tarefa.
+    *(ajustado na revisão final: sem essa carência, problemas que oscilam — disco
+    perto de 10%, RAM/CPU medidas na hora — reabriam tarefa todo dia)*
 - Motivo: mantém o fluxo do Power Automate burro e a lógica testável no repositório.
 - Limitação aceita: se alguém apagar a tarefa no Planner e o problema continuar, ela
   não é recriada enquanto o código não sumir e voltar.

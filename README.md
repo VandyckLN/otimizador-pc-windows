@@ -70,11 +70,16 @@ Uma vez por dia, cada PC pode enviar um aviso para um fluxo do Power Automate, q
 
 **Como configurar:**
 
-1. Copie a pasta `Otimizador-Empresa` para `C:\TI\Otimizador-Empresa` e, num Prompt de Comando **como administrador**, restrinja a pasta `C:\TI` a Administradores e SYSTEM:
+1. Abra um Prompt de Comando **como administrador** e, **nele**, crie a pasta, copie os arquivos e restrinja o acesso a Administradores e SYSTEM:
 
    ```bat
+   mkdir C:\TI
+   xcopy /E /I "<origem>\Otimizador-Empresa" C:\TI\Otimizador-Empresa
+   icacls C:\TI /setowner *S-1-5-32-544 /T
    icacls C:\TI /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F
    ```
+
+   Crie a pasta pelo prompt elevado: quem cria uma pasta em `C:\` vira o dono dela, e o dono pode mudar as permissões depois. O `/setowner` corrige isso se a pasta já existia.
 
    A tarefa agendada roda esses scripts como SYSTEM: se um usuário comum puder alterá-los, ele executa código como SYSTEM, lê o token do `config.json` ou planta um `estado\` falso. (No PowerShell, coloque cada `*S-...F` entre aspas simples.)
 2. Monte o fluxo seguindo o [guia do fluxo](docs/monitoramento/fluxo-power-automate.md).

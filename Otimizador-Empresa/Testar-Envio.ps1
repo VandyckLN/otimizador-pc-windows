@@ -16,6 +16,14 @@ function Log($msg, $cor) {
     if ($cor) { Write-Host $msg -ForegroundColor $cor } else { Write-Host $msg }
 }
 
+# Precisa de administrador: o Proteger-Config tira a leitura do config.json de usuarios comuns,
+# inclusive de quem esta rodando o teste - sem elevacao o teste se trancaria para fora.
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Execute este teste num PowerShell aberto como administrador." -ForegroundColor Red
+    exit 1
+}
+
 . (Join-Path $PSScriptRoot 'Monitoramento.ps1')
 
 # Restringe o config.json a Administradores e SYSTEM (avisa se o icacls falhar)
